@@ -80,40 +80,52 @@ function semantic_markup_demo_css_to_xpath($css_selector = 'div.item > h4 > a') 
   }
 }
 
+/**
+ * Implements hook_page_alter().
+ */
+function semantic_markup_page_alter(&$page) {
+  // Add a post render callback to add the markup to the page's rendered html.
+  $page['#post_render'][] = 'semantic_markup_page_post_render';
+}
 
 /**
- * Implements hook_process_html().
+ * Callback for the page_alter post_render.
  */
-function semantic_markup_process_html(&$variables) {
-  $rdfa_mappings = module_invoke_all('semantic_markup_mappings');
-  if (!empty($rdfa_mappings)) {
+function semantic_markup_page_post_render($html, $elements) {
+  $mappings = module_invoke_all('semantic_markup_mappings');
+  if (!empty($mappings)) {
     // Create DOM XPath object to process.
-    $dom = filter_dom_load($variables['page']);
-    $dom_xpath = new DOMXPath($dom);
+    $doc = new DOMDocument();
+    // Ignore warnings during HTML soup loading.
+    @$doc->loadHTML($html);
+    $doc->substituteEntities = FALSE;
+    $xpath = new DOMXPath($doc);
 
-    foreach ($rdfa_mappings as $rdfa_mapping) {
-      switch ($rdfa_mapping['type']) {
+    foreach ($mappings as $mapping) {
+      switch ($mapping['type']) {
         case 'global':
           // Process global mappings.
-          _semantic_markup_process_rdf_mappings($dom_xpath, $rdfa_mapping['mappings']);
+          _semantic_markup_process_mappings($xpath, $mapping['mappings']);
           break;
         case 'node':
           $node = menu_get_object();
-          if (isset($node->type) && $node->type == $rdfa_mapping['bundle']) {
+          if (isset($node->type) && $node->type == $mapping['bundle']) {
             // Pass node context for token replacement.
-            _semantic_markup_process_rdf_mappings($dom_xpath, $rdfa_mapping['mappings'], array('node' => $node));
+            _semantic_markup_process_mappings($xpath, $mapping['mappings'], array('node' => $node));
           }
           break;
       }
     }
-
-    // Replace the page HTML with processed RDFa.
-    $variables['page'] = filter_dom_serialize($dom);
+    // Replace the page HTML with processed markup.
+    return $doc->saveHTML();
   }
+
+  // No changes to the original html.
+  return $html;
 }
 
 /**
- * Process RDFa mappings.
+ * Process markup mappings.
  *
  * @param DOMXPath $dom_xpath
  *   DOMXPath to be processed.
@@ -122,7 +134,7 @@ function semantic_markup_process_html(&$variables) {
  * @param array $context
  *   context to be used for token replacement.
  */
-function _semantic_markup_process_rdf_mappings($dom_xpath, $mappings, $context = array()) {
+function _semantic_markup_process_mappings($dom_xpath, $mappings, $context = array()) {
   foreach ($mappings as $mapping) {
     if ($elements = $dom_xpath->query($mapping['xpath'])) {
       foreach ($elements as $element) {
@@ -151,7 +163,7 @@ function _semantic_markup_process_rdf_mappings($dom_xpath, $mappings, $context =
           $value = token_replace($value, $context);
 
           // Run through callback if set.
-          if (!empty($config['callback'])) {
+          if (!empty($config['callback']) && function_exists($config['callback'])) {
             $value = call_user_func($config['callback'], $value);
           }
 
