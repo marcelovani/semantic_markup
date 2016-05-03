@@ -1,5 +1,87 @@
 <?php
 /**
+ * @file
+ * General functions and hook implementations.
+ *
+ * @see https://developers.google.com/structured-data/testing-tool/
+ */
+
+
+use Symfony\Component\CssSelector\CssSelectorConverter;
+
+// Symfony component library auto loader.
+spl_autoload_register('semantic_markup_autoload', TRUE, TRUE);
+
+/**
+ * Autoloader callback for symfony_css-selector library.
+ */
+function semantic_markup_autoload($class) {
+  if (strpos($class, 'Symfony\Component\CssSelector') === FALSE) {
+    // Not a CssSelector component.
+    return;
+  }
+  module_load_include('module', 'libraries');
+  $path = libraries_get_path('symfony_css_selector');
+  $class_path = str_replace('\\', '/', $class);
+  $class_path = str_replace('Symfony/Component/CssSelector', '',  $class_path);
+  if (file_exists(($path . '/' . $class_path . '.php'))) {
+    include($path . '/' . $class_path . '.php');
+  }
+}
+
+/**
+ * Implements hook_libraries_info().
+ */
+function semantic_markup_libraries_info() {
+  // Use the symfony css selector component.
+  return array(
+    'symfony_css_selector' => array(
+      'title' => 'Symfony CssSelector Component',
+      'vendor url' => 'http://symfony.com/doc/current/components/css_selector.html',
+      'download url' => 'https://github.com/symfony/css-selector',
+      'version callback' => 'semantic_markup_get_css_selector_version',
+      'files' => array(
+        'js' => array(
+          'composer.json',
+        ),
+      ),
+    ),
+  );
+}
+
+/**
+ * Callback for symfony_css-selector 'version callback'.
+ */
+function semantic_markup_get_css_selector_version($library) {
+  // Read the composer file.
+  $file = DRUPAL_ROOT . '/' . $library['library path'] . '/' . key($library['files']['js']);
+  if (!file_exists($file)) {
+    return;
+  }
+  $json = file_get_contents($file);
+  $data = json_decode($json,TRUE);
+  if (isset($data['extra']['branch-alias']['dev-master'])) {
+    return str_replace('-dev', '', $data['extra']['branch-alias']['dev-master']);
+  }
+  return;
+}
+
+/**
+ * Just to show that css to xpath works.
+ */
+function semantic_markup_demo_css_to_xpath($css_selector = 'div.item > h4 > a') {
+  // Try to load the library and check if it worked.
+  if (($library = libraries_load('symfony_css_selector')) && !empty($library['loaded'])) {
+    $converter = new CssSelectorConverter();
+    print $converter->toXPath($css_selector) . "\n";
+  }
+  else {
+    print "Library not found.\n";
+  }
+}
+
+
+/**
  * Implements hook_process_html().
  */
 function semantic_markup_process_html(&$variables) {
